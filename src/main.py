@@ -6,7 +6,7 @@ import pickle
 
 import numpy as np
 import torch
-from torch.optim import AdamW
+from torch.optim import AdamW, SGD
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from tensorboardX import SummaryWriter
 from torchvision import transforms
@@ -15,6 +15,7 @@ from sklearn import preprocessing
 from warmup_scheduler import GradualWarmupScheduler # pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.utils import shuffle
+import matplotlib.pyplot as plt
 
 from wsi_model import *
 from read_data import *
@@ -85,7 +86,7 @@ quick = args.quick
 bag_size = args.bag_size
 batch_size = args.batch_size
 
-transforms_ = torch.nn.Sequential(
+'''transforms_ = torch.nn.Sequential(
     transforms.RandomHorizontalFlip(),
     transforms.RandomVerticalFlip(),
     #transforms.ColorJitter(64.0 / 255, 0.75, 0.25, 0.04),
@@ -95,7 +96,17 @@ transforms_ = torch.nn.Sequential(
 transforms_val = torch.nn.Sequential(
     transforms.ConvertImageDtype(torch.float),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
-
+'''
+transforms_ = transforms.Compose([
+    #transforms.RandomHorizontalFlip(),
+    #transforms.RandomVerticalFlip(),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
+transforms_val = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
 print('Loading dataset...')
 
 df = pd.read_csv(path_csv)
@@ -151,6 +162,17 @@ if args.train:
                                      num_workers=num_workers, 
                                      shuffle=True, batch_size=batch_size)
 
+        # helper function to show an image
+        # (used in the `plot_classes_preds` function below)
+        def matplotlib_imshow(img, one_channel=False):
+            if one_channel:
+                img = img.mean(dim=0)
+            #img = img / 2 + 0.5     # unnormalize
+            npimg = img.numpy()
+            if one_channel:
+                plt.imshow(npimg, cmap="Greys")
+            else:
+                plt.imshow(np.transpose(npimg, (1, 2, 0)))
         dataloaders = {
                 'train': train_dataloader,
                 'val': val_dataloader}
@@ -169,10 +191,10 @@ if args.train:
 
         print('Initializing models')
 
-        resnet50_ = resnet18(pretrained=True)
+        resnet50_ = resnet50(pretrained=True)
 
-        #layers_to_train = [resnet50_.fc, resnet50_.layer4, resnet50_.layer3]
-        layers_to_train = [resnet50_.fc, resnet50_.layer4]
+        layers_to_train = [resnet50_.layer4]
+        #layers_to_train = [resnet50_.fc, resnet50_.layer4]
         for param in resnet50_.parameters():
             param.requires_grad = False
         for layer in layers_to_train:
@@ -181,9 +203,13 @@ if args.train:
 
         resnet50_ = resnet50_.to('cuda:0')
 
-        model = AggregationModel(resnet50_, num_outputs=2, resnet_dim=512)
+        model = AggregationModel(resnet50_, num_outputs=2, resnet_dim=2048)
         use_attention = False
-
+        def init_weights(m):
+            if type(m) == nn.Linear:
+                torch.nn.init.xavier_uniform_(m.weight)
+                m.bias.data.fill_(0.01)
+        model.fc.apply(init_weights)
         if args.checkpoint is not None:
             print('Restoring from checkpoint')
             print(args.checkpoint)
@@ -200,8 +226,8 @@ if args.train:
 
         optimizer = AdamW(model.parameters(), weight_decay = args.weight_decay, lr=lr)
         criterion = nn.CrossEntropyLoss()
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 500)
-        scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=1000, after_scheduler=scheduler)
+        #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 500)
+        #scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=1000, after_scheduler=scheduler)
         scheduler = None
         # train model
 
@@ -221,7 +247,7 @@ if args.train:
                     device='cuda:0', log_interval=args.log_interval,
                     summary_writer=summary_writer,
                     num_epochs=args.num_epochs,
-                    scheduler=scheduler_warmup)
+                    scheduler=None)
 
         #with open(args.save_dir+'train_val_results.pkl', 'wb') as file:
         #    pickle.dump(results, file)

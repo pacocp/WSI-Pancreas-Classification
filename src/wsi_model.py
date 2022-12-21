@@ -12,16 +12,6 @@ from PIL import Image
 
 from resnet import *
 
-def matplotlib_imshow(img, one_channel=False):
-    if one_channel:
-        img = img.mean(dim=0)
-    img = img / 2 + 0.5     # unnormalize
-    npimg = img.numpy()
-    if one_channel:
-        plt.imshow(npimg, cmap="Greys")
-    else:
-        plt.imshow(np.transpose(npimg, (1, 2, 0)))
-
 #torch.backends.cudnn.benchmark = True
 
 class TanhAttention(nn.Module):
@@ -158,7 +148,7 @@ def train(model, criterion, optimizer, dataloaders, transforms,
     # Creates once at the beginning of training
     scaler = torch.cuda.amp.GradScaler()
     actual_patience = 0
-    accum_iter = 64
+    accum_iter = 8
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
@@ -189,23 +179,22 @@ def train(model, criterion, optimizer, dataloaders, transforms,
                 labels = labels.to(device)
                 wsi = wsi.to(device)
                 #wsi = transforms[phase](wsi)
-                optimizer.zero_grad()
                 with torch.set_grad_enabled(phase=='train'):
                     # Casts operations to mixed precision
                     with torch.cuda.amp.autocast():
                         outputs = model(wsi)
-                        # saving running outputs
-                        running_outputs[phase].append(outputs.detach().cpu().numpy())
-                        running_labels[phase].append(labels.cpu().numpy())
-                        
-                        _, preds = torch.max(outputs,1)
-                        loss = criterion(outputs, labels)
-                        loss = loss / accum_iter 
-                        #print(f'{phase}: real {Counter(labels.cpu().numpy())}; pred {Counter(preds.cpu().numpy())}')
+                    # saving running outputs
+                    running_outputs[phase].append(outputs.detach().cpu().numpy())
+                    running_labels[phase].append(labels.cpu().numpy())
+                    
+                    _, preds = torch.max(outputs,1)
+                    loss = criterion(outputs, labels)
+                    loss = loss / accum_iter
+                    if phase == 'train':
+                        scaler.scale(loss).backward()
                     if phase == 'train' and (((batch_idx + 1) % accum_iter == 0) or (batch_idx + 1 == len(dataloaders[phase]))):
                         # Scales the loss, and calls backward()
                         # to create scaled gradients
-                        scaler.scale(loss).backward()
                         #loss.backward()
                         # Unscales gradients and calls
                         # or skips optimizer.step()
@@ -213,11 +202,12 @@ def train(model, criterion, optimizer, dataloaders, transforms,
                         #optimizer.step()
                         # Updates the scale for next iteration
                         scaler.update()
-                        if scheduler is not None:
-                            scheduler.step()
+                        optimizer.zero_grad()
+                        #if scheduler is not None:
+                        #    scheduler.step()
 
                 summary_step += 1
-                running_loss += loss.item() #* wsi.size(0)
+                running_loss += loss.item() * wsi.size(0)
                 
                 running_corrects += torch.sum(preds == labels)
                 sizes[phase] += size
@@ -269,7 +259,8 @@ def train(model, criterion, optimizer, dataloaders, transforms,
             if summary_writer is not None:
                 summary_writer.add_scalar("{}/epoch_loss".format(phase), epoch_loss, epoch)
                 summary_writer.add_scalar("{}/epoch_acc".format(phase), epoch_acc, epoch)
-
+        if actual_patience > patience:
+                break
 
     torch.save(model.state_dict(), os.path.join(save_dir, 'model_last.pt'))
     
@@ -319,7 +310,7 @@ def evaluate(model, dataloader, dataset_size, transforms, criterion,
         labels = labels.to(device)
 
         wsi = wsi.to(device)
-        wsi = transforms(wsi)
+        #wsi = transforms(wsi)
         with torch.set_grad_enabled(False):
             if use_attention:
                 outputs = model(wsi)

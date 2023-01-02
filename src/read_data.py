@@ -72,7 +72,7 @@ class PatchBagDataset(Dataset):
         row = self.data[WSI]
         h, w, c = (self.img_size, self.img_size, 3)
         with h5py.File(wsi_path, 'r') as h5_file:
-            imgs = [self.transforms(Image.fromarray(h5_file[str(patch)][:])) for patch in row['images'][i:i + self.bag_size]]
+            imgs = [self.transforms(torch.from_numpy(h5_file[str(patch)][:]).permute(2,0,1)) for patch in row['images'][i:i + self.bag_size]]
             #imgs = [self.normalizer.normalize(I=self.normalizer.fit(img), stains=False) for img in imgs]
         img = torch.stack(imgs, dim=0)
         return img, label

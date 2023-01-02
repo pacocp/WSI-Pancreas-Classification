@@ -97,16 +97,16 @@ transforms_val = torch.nn.Sequential(
     transforms.ConvertImageDtype(torch.float),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
 '''
-transforms_ = transforms.Compose([
-    #transforms.RandomHorizontalFlip(),
-    #transforms.RandomVerticalFlip(),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-])
-transforms_val = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-])
+transforms_ = torch.nn.Sequential(
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomVerticalFlip(),
+    #transforms.ColorJitter(64.0 / 255, 0.75, 0.25, 0.04),
+    transforms.ConvertImageDtype(torch.float),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+
+transforms_val = torch.nn.Sequential(
+    transforms.ConvertImageDtype(torch.float),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
 print('Loading dataset...')
 
 df = pd.read_csv(path_csv)
@@ -162,17 +162,6 @@ if args.train:
                                      num_workers=num_workers, 
                                      shuffle=True, batch_size=batch_size)
 
-        # helper function to show an image
-        # (used in the `plot_classes_preds` function below)
-        def matplotlib_imshow(img, one_channel=False):
-            if one_channel:
-                img = img.mean(dim=0)
-            #img = img / 2 + 0.5     # unnormalize
-            npimg = img.numpy()
-            if one_channel:
-                plt.imshow(npimg, cmap="Greys")
-            else:
-                plt.imshow(np.transpose(npimg, (1, 2, 0)))
         dataloaders = {
                 'train': train_dataloader,
                 'val': val_dataloader}
@@ -261,4 +250,4 @@ if args.train:
         i+= 1
 
     with open(os.path.join(args.save_dir,'test_results.pkl'), 'wb') as file:
-        pickle.dump(test_results, file)
+        pickle.dump(test_results_splits, file)

@@ -2,6 +2,21 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split, KFold, GroupKFold
 
+def patient_split_full(dataset, random_state=0):
+    """Perform patient split of any of the previously defined datasets.
+    """
+    patients_unique = np.unique(dataset.Patient_ID)
+    patients_train, patients_test = train_test_split(
+        patients_unique, test_size=0.2, random_state=random_state)
+
+    indices = np.arange(len(dataset))
+    train_idx = indices[np.any(np.array(dataset.Patient_ID)[:, np.newaxis] == 
+                        np.array(patients_train)[np.newaxis], axis=1)]
+    test_idx = indices[np.any(np.array(dataset.Patient_ID)[:, np.newaxis] == 
+                        np.array(patients_test)[np.newaxis], axis=1)]
+
+    return train_idx, test_idx
+
 def patient_split(dataset, random_state=0):
     """Perform patient split of any of the previously defined datasets.
     """

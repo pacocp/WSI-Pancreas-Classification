@@ -60,7 +60,10 @@ parser.add_argument("--quick", help="if a quick test is performed",
                     action="store_true")
 parser.add_argument("--train", help="if the model is going to be trained",
                     action="store_true")
-
+parser.add_argument("--fulltrain", help="if the model is going to be trained on the full dataset",
+                    action="store_true")
+parser.add_argument("--evaluate", help="if we just want to evaluate on a dataset a pretrained model",
+                    action="store_true")
 args = parser.parse_args()
 
 np.random.seed(args.seed)
@@ -86,17 +89,6 @@ quick = args.quick
 bag_size = args.bag_size
 batch_size = args.batch_size
 
-'''transforms_ = torch.nn.Sequential(
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomVerticalFlip(),
-    #transforms.ColorJitter(64.0 / 255, 0.75, 0.25, 0.04),
-    transforms.ConvertImageDtype(torch.float),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
-
-transforms_val = torch.nn.Sequential(
-    transforms.ConvertImageDtype(torch.float),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
-'''
 transforms_ = torch.nn.Sequential(
     transforms.RandomHorizontalFlip(),
     transforms.RandomVerticalFlip(),
@@ -251,3 +243,166 @@ if args.train:
 
     with open(os.path.join(args.save_dir,'test_results.pkl'), 'wb') as file:
         pickle.dump(test_results_splits, file)
+
+elif args.fulltrain:
+        train_idx, val_idx = patient_split_full(df)
+        
+        train_df = df.iloc[train_idx]
+        val_df = df.iloc[val_idx]
+
+        train_dataset = PatchBagDataset(train_df,
+                                max_patches_total=max_patch_per_wsi,
+                                bag_size=bag_size,
+                                transforms=transforms_, quick=quick,
+                                label_encoder=le)
+        val_dataset = PatchBagDataset(val_df,
+                                max_patches_total=bag_size,
+                                bag_size=bag_size,
+                                transforms=transforms_val, quick=quick,
+                                label_encoder=le)
+
+        if torch.cuda.is_available():
+            print('There is a GPU!')
+            num_workers = torch.cuda.device_count() * 4
+
+        train_dataloader = DataLoader(train_dataset, 
+                                      num_workers=num_workers, pin_memory=True, 
+                                      shuffle=True, batch_size=batch_size)
+        val_dataloader = DataLoader(val_dataset, num_workers=num_workers,
+                                    shuffle=True, batch_size=batch_size)
+
+        dataloaders = {
+                'train': train_dataloader,
+                'val': val_dataloader}
+
+        dataset_sizes = {
+                'train': len(train_dataset),
+                'val': len(val_dataset)
+                }
+
+        transforms = {
+                'train': transforms_,
+                'val': transforms_val
+                }
+
+        print('Finished loading dataset and creating dataloader')
+
+        print('Initializing models')
+
+        resnet50_ = resnet50(pretrained=True)
+
+        layers_to_train = [resnet50_.layer4]
+        
+        for param in resnet50_.parameters():
+            param.requires_grad = False
+        for layer in layers_to_train:
+            for n, param in layer.named_parameters():
+                param.requires_grad = True
+
+        resnet50_ = resnet50_.to('cuda:0')
+
+        model = AggregationModel(resnet50_, num_outputs=2, resnet_dim=2048)
+        use_attention = False
+        def init_weights(m):
+            if type(m) == nn.Linear:
+                torch.nn.init.xavier_uniform_(m.weight)
+                m.bias.data.fill_(0.01)
+        model.fc.apply(init_weights)
+
+        if args.checkpoint is not None:
+            print('Restoring from checkpoint')
+            print(args.checkpoint)
+            model.load_state_dict(torch.load(args.checkpoint))
+            print('Loaded model from checkpoint')
+
+        if args.parallel and torch.cuda.device_count() > 2:
+            model = nn.DataParallel(model)
+        if torch.cuda.is_available():
+            model = model.to('cuda:0')
+        
+        # add optimizer
+        lr = args.lr
+
+        optimizer = AdamW(model.parameters(), weight_decay = args.weight_decay, lr=lr)
+        criterion = nn.CrossEntropyLoss()
+        scheduler = None
+        # train model
+
+        if args.log:
+            day_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") 
+            path_summary = os.path.join('summary',
+                        str(day_time) + "_{0}".format(args.flag))
+            #os.mkdir(path_summary)
+            summary_writer = SummaryWriter(path_summary)
+
+        else:
+            summary_writer = None
+
+        # train model
+        model, results = train(model, criterion, optimizer, dataloaders, transforms, 
+                    save_dir=args.save_dir,
+                    device='cuda:0', log_interval=args.log_interval,
+                    summary_writer=summary_writer,
+                    num_epochs=args.num_epochs,
+                    scheduler=None)
+elif args.evaluate:
+    test_dataset = PatchBagDataset(df,
+                                max_patches_total=max_patch_per_wsi,
+                                bag_size=bag_size,
+                                transforms=transforms_val, quick=quick,
+                                label_encoder=le)
+
+    if torch.cuda.is_available():
+        print('There is a GPU!')
+        num_workers = torch.cuda.device_count() * 4
+        
+    test_dataloader = DataLoader(test_dataset,  
+                                    num_workers=num_workers, 
+                                    shuffle=True, batch_size=batch_size)
+
+    print('Finished loading dataset and creating dataloader')
+
+    print('Initializing models')
+
+    resnet50_ = resnet50(pretrained=True)
+
+    layers_to_train = [resnet50_.layer4]
+    #layers_to_train = [resnet50_.fc, resnet50_.layer4]
+    for param in resnet50_.parameters():
+        param.requires_grad = False
+    for layer in layers_to_train:
+        for n, param in layer.named_parameters():
+            param.requires_grad = True
+
+    resnet50_ = resnet50_.to('cuda:0')
+
+    model = AggregationModel(resnet50_, num_outputs=2, resnet_dim=2048)
+    use_attention = False
+    def init_weights(m):
+        if type(m) == nn.Linear:
+            torch.nn.init.xavier_uniform_(m.weight)
+            m.bias.data.fill_(0.01)
+    model.fc.apply(init_weights)
+   
+    print('Restoring from checkpoint')
+    print(args.checkpoint)
+    model.load_state_dict(torch.load(args.checkpoint))
+    print('Loaded model from checkpoint')
+
+    if torch.cuda.is_available():
+        model = model.to('cuda:0')
+    
+    # add optimizer
+    lr = args.lr
+
+    optimizer = AdamW(model.parameters(), weight_decay = args.weight_decay, lr=lr)
+    criterion = nn.CrossEntropyLoss()
+    
+   
+    # test on test set
+
+    test_results = evaluate(model, test_dataloader, len(test_dataset),
+                                transforms_val, criterion=criterion, device='cuda:0')
+
+    with open(os.path.join(args.save_dir,'test_results_evaluation.pkl'), 'wb') as file:
+        pickle.dump(test_results, file)

@@ -2,6 +2,7 @@ import os
 import pickle
 import random
 import torchstain
+import slideflow as sf
 
 import numpy as np
 from torch.utils.data import Dataset
@@ -12,10 +13,25 @@ import h5py
 from PIL import Image
 import time 
 
+from macenko import TorchMacenkoNormalizerFix
+
+def obtain_normalizer(csv_file, transforms):
+    csv_file = csv_file.sample(1)
+    row = csv_file.iloc[0]
+    row = row.to_dict()
+    path = row['Path']
+    with h5py.File(path, 'r') as h5_file:
+        target = h5_file[str(0)][:]
+    #torch_normalizer = TorchMacenkoNormalizerFix()
+    import pdb; pdb.set_trace()
+    torch_normalizer = sf.norm.StainNormalizer('reinhard_fast')
+    torch_normalizer.fit(target)
+    return torch_normalizer
+
 class PatchBagDataset(Dataset):
     def __init__(self, csv_path, transforms=None, bag_size=40,
             max_patches_total=300, quick=False, label_encoder=None,
-            img_size = 256):
+            img_size = 256, normalize=True):
         self.csv_path = csv_path
         self.transforms = transforms
         self.bag_size = bag_size
@@ -25,7 +41,8 @@ class PatchBagDataset(Dataset):
         self.img_size = img_size
         self.index = []
         self.data = {}
-        self.normalizer = torchstain.normalizers.MacenkoNormalizer(backend='torch')
+        self.normalizer = sf.norm.StainNormalizer('reinhard_fast')
+        self.normalize = normalize
         self._preprocess()
 
     def _preprocess(self):
@@ -70,10 +87,14 @@ class PatchBagDataset(Dataset):
         (WSI, wsi_path, i, label) = self.index[idx]
         imgs = []
         row = self.data[WSI]
-        h, w, c = (self.img_size, self.img_size, 3)
         with h5py.File(wsi_path, 'r') as h5_file:
-            imgs = [self.transforms(torch.from_numpy(h5_file[str(patch)][:]).permute(2,0,1)) for patch in row['images'][i:i + self.bag_size]]
-            #imgs = [self.normalizer.normalize(I=self.normalizer.fit(img), stains=False) for img in imgs]
+            if self.normalize:
+                imgs_aux = [self.normalizer.transform(h5_file[str(patch)][:])for patch in row['images'][i:i + self.bag_size]]
+                imgs = [self.transforms(torch.from_numpy(img).permute(2,0,1)) for img in imgs_aux]
+                
+            else:
+                imgs = [self.transforms(torch.from_numpy(h5_file[str(patch)][:]).permute(2,0,1)) for patch in row['images'][i:i + self.bag_size]]
+
         img = torch.stack(imgs, dim=0)
         return img, label
 

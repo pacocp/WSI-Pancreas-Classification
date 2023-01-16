@@ -64,6 +64,8 @@ parser.add_argument("--fulltrain", help="if the model is going to be trained on 
                     action="store_true")
 parser.add_argument("--evaluate", help="if we just want to evaluate on a dataset a pretrained model",
                     action="store_true")
+parser.add_argument("--png", help="if the images are saved in PNG format",
+                    action="store_true")
 args = parser.parse_args()
 
 np.random.seed(args.seed)
@@ -346,7 +348,15 @@ elif args.fulltrain:
                     num_epochs=args.num_epochs,
                     scheduler=None)
 elif args.evaluate:
-    test_dataset = PatchBagDataset(df,
+    
+    if args.png:
+        test_dataset = PatchBagMHMCDataset(df,
+                                max_patches_total=max_patch_per_wsi,
+                                bag_size=bag_size,
+                                transforms=transforms_val, quick=quick,
+                                label_encoder=le)
+    else:
+        test_dataset = PatchBagDataset(df,
                                 max_patches_total=max_patch_per_wsi,
                                 bag_size=bag_size,
                                 transforms=transforms_val, quick=quick,

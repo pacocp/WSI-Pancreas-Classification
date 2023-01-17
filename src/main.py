@@ -1,19 +1,15 @@
 import os
-import json
 import argparse
 import datetime
 import pickle
 
 import numpy as np
 import torch
-from torch.optim import AdamW, SGD
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.optim import AdamW
+from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
 from torchvision import transforms
-from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
-from warmup_scheduler import GradualWarmupScheduler # pip install git+https://github.com/ildoonet/pytorch-gradual-warmup-lr.git
-from sklearn.utils.class_weight import compute_class_weight
 from sklearn.utils import shuffle
 import matplotlib.pyplot as plt
 
@@ -94,7 +90,6 @@ batch_size = args.batch_size
 transforms_ = torch.nn.Sequential(
     transforms.RandomHorizontalFlip(),
     transforms.RandomVerticalFlip(),
-    #transforms.ColorJitter(64.0 / 255, 0.75, 0.25, 0.04),
     transforms.ConvertImageDtype(torch.float),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
 
@@ -177,7 +172,7 @@ if args.train:
         resnet50_ = resnet50(pretrained=True)
 
         layers_to_train = [resnet50_.layer4]
-        #layers_to_train = [resnet50_.fc, resnet50_.layer4]
+
         for param in resnet50_.parameters():
             param.requires_grad = False
         for layer in layers_to_train:
@@ -209,9 +204,7 @@ if args.train:
 
         optimizer = AdamW(model.parameters(), weight_decay = args.weight_decay, lr=lr)
         criterion = nn.CrossEntropyLoss()
-        #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 500)
-        #scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=1000, after_scheduler=scheduler)
-        scheduler = None
+
         # train model
 
         if args.log:
@@ -229,8 +222,7 @@ if args.train:
                     save_dir=args.save_dir,
                     device='cuda:0', log_interval=args.log_interval,
                     summary_writer=summary_writer,
-                    num_epochs=args.num_epochs,
-                    scheduler=None)
+                    num_epochs=args.num_epochs)
 
         #with open(args.save_dir+'train_val_results.pkl', 'wb') as file:
         #    pickle.dump(results, file)
@@ -377,7 +369,6 @@ elif args.evaluate:
     resnet50_ = resnet50(pretrained=True)
 
     layers_to_train = [resnet50_.layer4]
-    #layers_to_train = [resnet50_.fc, resnet50_.layer4]
     for param in resnet50_.parameters():
         param.requires_grad = False
     for layer in layers_to_train:
@@ -387,7 +378,6 @@ elif args.evaluate:
     resnet50_ = resnet50_.to('cuda:0')
 
     model = AggregationModel(resnet50_, num_outputs=2, resnet_dim=2048)
-    use_attention = False
     def init_weights(m):
         if type(m) == nn.Linear:
             torch.nn.init.xavier_uniform_(m.weight)

@@ -9,22 +9,7 @@ import torch
 from tqdm import tqdm
 import h5py
 from PIL import Image
-import time 
 import glob
-
-
-def obtain_normalizer(csv_file, transforms):
-    csv_file = csv_file.sample(1)
-    row = csv_file.iloc[0]
-    row = row.to_dict()
-    path = row['Path']
-    with h5py.File(path, 'r') as h5_file:
-        target = h5_file[str(0)][:]
-    #torch_normalizer = TorchMacenkoNormalizerFix()
-    import pdb; pdb.set_trace()
-    torch_normalizer = sf.norm.StainNormalizer('reinhard_fast')
-    torch_normalizer.fit(target)
-    return torch_normalizer
 
 class PatchBagDataset(Dataset):
     def __init__(self, csv_path, transforms=None, bag_size=40,

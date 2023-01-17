@@ -3,57 +3,11 @@ import torch.nn as nn
 import os
 import numpy as np
 from tqdm import tqdm
-from torchvision.ops import sigmoid_focal_loss
-from torchvision.utils import make_grid
 import torch.nn.functional as F
-import time
-from collections import Counter
-from PIL import Image
 
 from resnet import *
 
 #torch.backends.cudnn.benchmark = True
-
-class TanhAttention(nn.Module):
-    def __init__(self, dim=2048):
-        super(TanhAttention, self).__init__()
-        self.dim = dim
-        self.vector = torch.nn.Parameter(torch.zeros(dim))
-        self.linear = nn.Linear(dim, dim, bias=False)
-
-    def forward(self, x):
-        logits = torch.tanh(self.linear(x)).matmul(self.vector.unsqueeze(-1))
-        attention_weights = torch.nn.functional.softmax(logits, dim=1)
-        out = x * attention_weights * x.shape[1]
-        return out,attention_weights
-
-class GatedAttention(nn.Module):
-    def __init__(self, dim=2048, h_dim=256, n_classes=1, dropout=False):
-        super(GatedAttention, self).__init__()
-        self.dim = dim
-        self.h_dim = h_dim
-        self.n_classes = n_classes
-        self.attention_a = [
-            nn.Linear(dim, h_dim),
-            nn.Tanh()]
-        
-        self.attention_b = [nn.Linear(dim, h_dim),
-                            nn.Sigmoid()]
-        if dropout:
-            self.attention_a.append(nn.Dropout(0.25))
-            self.attention_b.append(nn.Dropout(0.25))
-        
-        self.attention_a = nn.Sequential(*self.attention_a)
-        self.attention_b = nn.Sequential(*self.attention_b)
-        
-        self.attention_c = nn.Linear(h_dim, n_classes)
-    
-    def forward(self, x):
-        a = self.attention_a(x)
-        b = self.attention_b(x)
-        A = a.mul(b)
-        A = self.attention_c(A)
-        return A, x 
 
 class AggregationModel(nn.Module):
     def __init__(self, resnet, resnet_dim=2048, num_outputs=2):
@@ -78,45 +32,11 @@ class AggregationModel(nn.Module):
         features = self.forward_extract(x)
         return self.fc(features)
 
-class AggregationModelAttention(nn.Module):
-    def __init__(self, resnet, resnet_dim=2048, num_outputs=2, attention_type='gated'):
-        super(AggregationModelAttention, self).__init__()
-        self.resnet = resnet
-        self.resnet_dim = resnet_dim
-        self.fc = nn.Sequential(
-            nn.Dropout(0.5),
-            nn.Linear(resnet_dim, num_outputs)
-        )
-        self.attention_type = attention_type
-        if self.attention_type == 'sattention':
-            self.attention = TanhAttention(resnet_dim)
-        elif self.attention_type == 'gated':
-            self.attention = GatedAttention(dim=resnet_dim, n_classes=1)
-
-    def forward_extract(self, x):
-        (batch_size, bag_size, c, h, w) = x.shape
-        x = x.reshape(-1, c, h, w) # joining the batch_size with the bag size
-        features = self.resnet.forward_extract(x) # extracting feature vectors from the tiles
-        features = features.view(batch_size, bag_size, self.resnet_dim)
-
-        features, x = self.attention(features)
-        
-        #features = features.mean(dim=1)
-        return features, x
-    
-    def forward(self, x):
-        features, x = self.forward_extract(x)
-        features = torch.transpose(features, 1, 2) # B x n_classes x res_dim
-        features = F.softmax(features, dim=1)
-        M = torch.bmm(features, x)
-        M = torch.mean(M, dim=1)
-        return self.fc(M)
-
 def train(model, criterion, optimizer, dataloaders, transforms,
           save_dir='checkpoints/models/', device='cpu',
           log_interval=100, summary_writer=None, num_epochs=100, 
           scheduler=None, verbose=True,
-          use_attention=False, patience=20):
+          patience=20):
     """ 
     Train classification/regression model.
         Parameters:
@@ -203,8 +123,6 @@ def train(model, criterion, optimizer, dataloaders, transforms,
                         # Updates the scale for next iteration
                         scaler.update()
                         optimizer.zero_grad()
-                        #if scheduler is not None:
-                        #    scheduler.step()
 
                 summary_step += 1
                 running_loss += loss.item() * wsi.size(0)
@@ -279,8 +197,7 @@ def train(model, criterion, optimizer, dataloaders, transforms,
     return model, results
 
 def evaluate(model, dataloader, dataset_size, transforms, criterion,
-             device='cpu', verbose=True,
-             use_attention=False):
+             device='cpu', verbose=True):
     """ 
     Evaluate classification model on test set
         Parameters:
@@ -312,16 +229,12 @@ def evaluate(model, dataloader, dataset_size, transforms, criterion,
         wsi = wsi.to(device)
         #wsi = transforms(wsi)
         with torch.set_grad_enabled(False):
-            if use_attention:
-                outputs = model(wsi)
-            else:
-                outputs = model(wsi)
+           
+            outputs = model(wsi)
 
             _, preds = torch.max(outputs, 1)
-            if criterion == 'focal_loss':
-                loss = sigmoid_focal_loss(outputs, F.one_hot(labels, 3).float(), reduction='mean')
-            else:
-                loss = criterion(outputs, labels)
+            
+            loss = criterion(outputs, labels)
            
         predictions.append(preds.detach().to('cpu').numpy())
         corrects += torch.sum(preds == labels)
@@ -346,19 +259,3 @@ def evaluate(model, dataloader, dataset_size, transforms, criterion,
     }
 
     return test_results
-
-if __name__ == '__main__':
-    resnet50 = resnet50(pretrained=True)
-
-    layers_to_train = [resnet50.fc, resnet50.layer4, resnet50.layer3]
-    for param in resnet50.parameters():
-        param.requires_grad = False
-    for layer in layers_to_train:
-        for n, param in layer.named_parameters():
-            param.requires_grad = True
-
-    resnet50 = resnet50.to('cuda:0')
-    
-    model = AggregationModelAttention(resnet50, num_outputs=2).to('cuda:0')
-    x = torch.randn((2,50,3,256,256), device='cuda:0')
-    y_hat = model(x)

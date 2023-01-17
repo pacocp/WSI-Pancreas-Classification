@@ -33,6 +33,14 @@ python3 patch_gen_grid.py --wsi_path ../GTEX/ --patch_path ../GTEX/TCGA_256x256/
 
 ```
 
+### Creating ref files
+
+```python
+
+python3 create_refs.py
+
+```
+
 ### Performing the independent patient-wise stratified 10-Fold CV on TCIA and TCGA+GTEx:
 
 ```python

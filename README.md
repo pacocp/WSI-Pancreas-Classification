@@ -1,4 +1,4 @@
-# Performance comparison of a deep learning model for pancreatic ductal carcinoma detection between multi-center histopathology databases
+# Performance comparison between multi-center histopathology datasets of a weakly-supervised deep learning model for pancreatic ductal adenocarcinoma detection
 
 Studying the performance differences between different deep learning models trained on multiple histopathology databases for pancreatic ductal carcinoma vs control classification.
 

@@ -36,7 +36,7 @@ def train(model, criterion, optimizer, dataloaders, transforms,
           save_dir='checkpoints/models/', device='cpu',
           log_interval=100, summary_writer=None, num_epochs=100, 
           scheduler=None, verbose=True,
-          patience=20):
+          patience=40):
     """ 
     Train classification/regression model.
         Parameters:

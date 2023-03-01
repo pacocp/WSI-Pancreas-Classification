@@ -64,16 +64,16 @@ python3 main.py --path_csv ../data/tcga_gtex_data.csv --save_dir runs/tcgagtex_f
 ```python
 
 # tcga-gtex on tcia
-python3 main.py --path_csv ../data/tcia_ref.csv --save_dir runs/tcga_gtex_on --evaluate --batch_size 4 --lr 1e-3 --bag_size 100 --max_patch_per_wsi 200 --log 0 --flag tcgagtex_on_tcia --checkpoint runs/tcgagtex_fulltrain/model_dict_best.pt
+python3 main.py --path_csv ../data/tcia_ref.csv --save_dir runs/tcga_gtex_on --evaluate --batch_size 4 --lr 1e-3 --bag_size 100 --max_patch_per_wsi 100 --log 0 --flag tcgagtex_on_tcia --checkpoint runs/tcgagtex_fulltrain/model_dict_best.pt
 
 # tcia on tcga-gtex
-python3 main.py --path_csv ../data/tcga_gtex_data.csv --save_dir runs/tcia_on_tcgagtex --evaluate --batch_size 4 --lr 1e-3 --bag_size 100 --max_patch_per_wsi 200 --log 0 --flag tcia_on_tcgagtex --checkpoint runs/tcia_fulltrain/model_dict_best.pt
+python3 main.py --path_csv ../data/tcga_gtex_data.csv --save_dir runs/tcia_on_tcgagtex --evaluate --batch_size 4 --lr 1e-3 --bag_size 100 --max_patch_per_wsi 100 --log 0 --flag tcia_on_tcgagtex --checkpoint runs/tcia_fulltrain/model_dict_best.pt
 
 # tcia on mhmc
-python3 main.py --path_csv ../data/mhmc_ref.csv --png --save_dir runs/tcia_on_mhmc --evaluate --batch_size 4 --lr 1e-3 --bag_size 100 --max_patch_per_wsi 200 --log 0 --flag tcia_on_mhmc --checkpoint runs/tcia_fulltrain/model_dict_best.pt
+python3 main.py --path_csv ../data/mhmc_ref.csv --png --save_dir runs/tcia_on_mhmc --evaluate --batch_size 4 --lr 1e-3 --bag_size 100 --max_patch_per_wsi 100 --log 0 --flag tcia_on_mhmc --checkpoint runs/tcia_fulltrain/model_dict_best.pt
 
 # tcga-gtex on mhmc
-python3 main.py --path_csv ../data/mhmc_ref.csv --png --save_dir runs/tcgagtex_on_mhmc --evaluate --batch_size 4 --lr 1e-3 --bag_size 100 --max_patch_per_wsi 200 --log 0 --flag tcia_on_mhmc --checkpoint runs/tcgagtex_fulltrain/model_dict_best.pt
+python3 main.py --path_csv ../data/mhmc_ref.csv --png --save_dir runs/tcgagtex_on_mhmc --evaluate --batch_size 4 --lr 1e-3 --bag_size 100 --max_patch_per_wsi 100 --log 0 --flag tcia_on_mhmc --checkpoint runs/tcgagtex_fulltrain/model_dict_best.pt
 
 ```
 

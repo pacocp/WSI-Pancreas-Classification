@@ -11,6 +11,7 @@ from tensorboardX import SummaryWriter
 from torchvision import transforms
 from sklearn import preprocessing
 from sklearn.utils import shuffle
+from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 from wsi_model import *
@@ -18,8 +19,20 @@ from read_data import *
 from resnet import resnet50
 from utils import *
 
+def collate_fn(batch):
+    """Remove bad entries from the dataloader
+    Args:
+        batch (torch.Tensor): batch of tensors from the dataaset
+    Returns:
+        collate: Default collage for the dataloader
+    """
+    batch = list(filter(lambda x: x[0] is not None, batch))
+    return torch.utils.data.dataloader.default_collate(batch)
+
+
 parser = argparse.ArgumentParser(description='Generalization classification')
 parser.add_argument('--path_csv', type=str, help='Path to the csv file')
+parser.add_argument('--path_csv2', type=str, help='Path to the csv file for adding to training', default=None)
 parser.add_argument('--checkpoint', type=str, default=None,
         help='File with the checkpoint to start with')
 parser.add_argument('--save_dir', type=str, default=None,
@@ -62,6 +75,8 @@ parser.add_argument("--evaluate", help="if we just want to evaluate on a dataset
                     action="store_true")
 parser.add_argument("--png", help="if the images are saved in PNG format",
                     action="store_true")
+parser.add_argument('--normalizer', type=str, default='reinhard',
+                    help='Stain normalizer to use')
 args = parser.parse_args()
 
 np.random.seed(args.seed)
@@ -105,6 +120,10 @@ le.fit(np.array(['Tumor', 'Control']).ravel())
 print(list(le.classes_))
 
 if args.train:
+    if args.path_csv2:
+        df2 = pd.read_csv(args.path_csv2)
+        df2 = shuffle(df2, random_state=args.seed)
+
     train_idxs, val_idxs, test_idxs = patient_kfold(df, n_splits=args.k)
     k_fold_idxs = {
         'train_idxs': train_idxs,
@@ -120,23 +139,35 @@ if args.train:
         train_df = df.iloc[train_idx]
         val_df = df.iloc[val_idx]
         test_df = df.iloc[test_idx]
-
+        if args.path_csv2:
+            tr_idx, v_idx = patient_split_full(df2, random_state=args.seed)
+            tr = df2.iloc[tr_idx]
+            val = df2.iloc[v_idx]
+            train_df = pd.concat([train_df, tr], axis=0)
+            val_df = pd.concat([val_df, val], axis=0)
+            train_df = shuffle(train_df, random_state=args.seed)
+            val_df = shuffle(val_df, random_state=args.seed)
         train_dataset = PatchBagDataset(train_df,
                                 max_patches_total=max_patch_per_wsi,
                                 bag_size=bag_size,
                                 transforms=transforms_, quick=quick,
-                                label_encoder=le)
+                                label_encoder=le,
+                                normalize=True)
         val_dataset = PatchBagDataset(val_df,
                                 max_patches_total=bag_size,
                                 bag_size=bag_size,
                                 transforms=transforms_val, quick=quick,
-                                label_encoder=le)
+                                label_encoder=le,
+                                normalize=True,
+                                normalizer_type=args.normalizer)
 
         test_dataset = PatchBagDataset(test_df,
                                 max_patches_total=bag_size,
                                 bag_size=bag_size,
                                 transforms=transforms_val, quick=quick,
-                                label_encoder=le)
+                                label_encoder=le,
+                                normalize=True,
+                                normalizer_type=args.normalizer)
 
         if torch.cuda.is_available():
             print('There is a GPU!')
@@ -144,12 +175,15 @@ if args.train:
 
         train_dataloader = DataLoader(train_dataset, 
                                       num_workers=num_workers, pin_memory=True, 
-                                      shuffle=True, batch_size=batch_size)
+                                      shuffle=True, batch_size=batch_size,
+                                      collate_fn=collate_fn)
         val_dataloader = DataLoader(val_dataset, num_workers=num_workers,
-                                    shuffle=True, batch_size=batch_size)
+                                    shuffle=False, batch_size=batch_size,
+                                    collate_fn=collate_fn)
         test_dataloader = DataLoader(test_dataset,  
                                      num_workers=num_workers, 
-                                     shuffle=True, batch_size=batch_size)
+                                     shuffle=False, batch_size=batch_size,
+                                    collate_fn=collate_fn)
 
         dataloaders = {
                 'train': train_dataloader,
@@ -263,7 +297,7 @@ elif args.fulltrain:
                                       num_workers=num_workers, pin_memory=True, 
                                       shuffle=True, batch_size=batch_size)
         val_dataloader = DataLoader(val_dataset, num_workers=num_workers,
-                                    shuffle=True, batch_size=batch_size)
+                                    shuffle=False, batch_size=batch_size)
 
         dataloaders = {
                 'train': train_dataloader,
@@ -360,7 +394,7 @@ elif args.evaluate:
         
     test_dataloader = DataLoader(test_dataset,  
                                     num_workers=num_workers, 
-                                    shuffle=True, batch_size=batch_size)
+                                    shuffle=False, batch_size=batch_size)
 
     print('Finished loading dataset and creating dataloader')
 

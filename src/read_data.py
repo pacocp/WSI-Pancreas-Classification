@@ -14,7 +14,8 @@ import glob
 class PatchBagDataset(Dataset):
     def __init__(self, csv_path, transforms=None, bag_size=40,
             max_patches_total=300, quick=False, label_encoder=None,
-            img_size = 256, normalize=True):
+            img_size = 256, normalize=True, return_ids = False,
+            normalizer_type = 'reinhard'):
         self.csv_path = csv_path
         self.transforms = transforms
         self.bag_size = bag_size
@@ -24,8 +25,12 @@ class PatchBagDataset(Dataset):
         self.img_size = img_size
         self.index = []
         self.data = {}
-        self.normalizer = sf.norm.StainNormalizer('reinhard_fast')
+        if normalizer_type == 'reinhard':
+            self.normalizer = sf.norm.StainNormalizer('reinhard_fast')
+        elif normalizer_type == 'macenko':
+            self.normalizer = sf.norm.StainNormalizer('macenko')
         self.normalize = normalize
+        self.return_ids = return_ids
         self._preprocess()
 
     def _preprocess(self):
@@ -42,6 +47,7 @@ class PatchBagDataset(Dataset):
             path = row['Path']
             WSI = row['WSI_name']
             label = np.asarray(row['Label'])
+            patient_id = row['Patient_ID']
             if self.le is not None:
                 label = self.le.transform(label.reshape(-1,1))
            
@@ -54,7 +60,7 @@ class PatchBagDataset(Dataset):
             images = random.sample(n_patches, n_selected)
             self.data[WSI] = {w.lower(): row[w] for w in row.keys()}
             self.data[WSI].update({'WSI': WSI, 'images': images, 'n_images': len(images), 
-                                   'wsi_path': path})
+                                   'wsi_path': path, 'patient_id': patient_id})
             for k in range(len(images) // self.bag_size):
                 self.index.append((WSI, path, self.bag_size * k, label))
             
@@ -79,6 +85,8 @@ class PatchBagDataset(Dataset):
                 imgs = [self.transforms(torch.from_numpy(h5_file[str(patch)][:]).permute(2,0,1)) for patch in row['images'][i:i + self.bag_size]]
 
         img = torch.stack(imgs, dim=0)
+        if self.return_ids:
+            return img, label, row['patient_id']
         return img, label
 
 class PatchBagMHMCDataset(Dataset):
@@ -143,10 +151,13 @@ class PatchBagMHMCDataset(Dataset):
         (WSI, wsi_path, i, label) = self.index[idx]
         imgs = []
         row = self.data[WSI]
-        imgs_aux = [self.normalizer.transform(np.array(Image.open(patch))) for patch in row['images'][i: i + self.bag_size]]
-        imgs = imgs = [self.transforms(torch.from_numpy(img).permute(2,0,1)) for img in imgs_aux]
+        try:
+            imgs_aux = [self.normalizer.transform(np.array(Image.open(patch))) for patch in row['images'][i: i + self.bag_size]]
+            imgs = imgs = [self.transforms(torch.from_numpy(img).permute(2,0,1)) for img in imgs_aux]
         
-        img = torch.stack(imgs, dim=0)
+            img = torch.stack(imgs, dim=0)
+        except: 
+            img = None
         return img, label
     
 if __name__ == '__main__':

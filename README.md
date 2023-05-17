@@ -76,4 +76,8 @@ python3 main.py --path_csv ../data/mhmc_ref.csv --png --save_dir runs/tcia_on_mh
 python3 main.py --path_csv ../data/mhmc_ref.csv --png --save_dir runs/tcgagtex_on_mhmc --evaluate --batch_size 4 --lr 1e-3 --bag_size 100 --max_patch_per_wsi 100 --log 0 --flag tcia_on_mhmc --checkpoint runs/tcgagtex_fulltrain/model_dict_best.pt
 
 ```
+## CPTAC k-Fold per country of origin
 
+```python
+python3 main.py --path_csv ../data/tcia_ref.csv --save_dir runs/tcia_kfold_country --country --batch_size 4 --lr 1e-3 --bag_size 100 --max_patch_per_wsi 200 --log 0 --flag tcia_kfold_patient_country
+```

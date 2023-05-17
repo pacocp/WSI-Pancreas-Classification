@@ -73,6 +73,8 @@ parser.add_argument("--fulltrain", help="if the model is going to be trained on 
                     action="store_true")
 parser.add_argument("--evaluate", help="if we just want to evaluate on a dataset a pretrained model",
                     action="store_true")
+parser.add_argument("--country", help="ablation analysis on a given variable",
+                    action="store_true")
 parser.add_argument("--png", help="if the images are saved in PNG format",
                     action="store_true")
 parser.add_argument('--normalizer', type=str, default='reinhard',
@@ -152,22 +154,25 @@ if args.train:
                                 bag_size=bag_size,
                                 transforms=transforms_, quick=quick,
                                 label_encoder=le,
-                                normalize=True)
+                                normalize=False,
+                                return_ids=True)
         val_dataset = PatchBagDataset(val_df,
                                 max_patches_total=bag_size,
                                 bag_size=bag_size,
                                 transforms=transforms_val, quick=quick,
                                 label_encoder=le,
-                                normalize=True,
-                                normalizer_type=args.normalizer)
+                                normalize=False,
+                                normalizer_type=args.normalizer,
+                                return_ids=True)
 
         test_dataset = PatchBagDataset(test_df,
                                 max_patches_total=bag_size,
                                 bag_size=bag_size,
                                 transforms=transforms_val, quick=quick,
                                 label_encoder=le,
-                                normalize=True,
-                                normalizer_type=args.normalizer)
+                                normalize=False,
+                                normalizer_type=args.normalizer,
+                                return_ids=True)
 
         if torch.cuda.is_available():
             print('There is a GPU!')
@@ -386,7 +391,8 @@ elif args.evaluate:
                                 max_patches_total=max_patch_per_wsi,
                                 bag_size=bag_size,
                                 transforms=transforms_val, quick=quick,
-                                label_encoder=le)
+                                label_encoder=le,
+                                return_ids=True)
 
     if torch.cuda.is_available():
         print('There is a GPU!')
@@ -440,3 +446,140 @@ elif args.evaluate:
 
     with open(os.path.join(args.save_dir,'test_results_evaluation.pkl'), 'wb') as file:
         pickle.dump(test_results, file)
+elif args.country:
+    train_idxs, val_idxs, test_idxs = patient_kfold_variable(df, variable='country')
+    test_results_splits = {}
+    i = 0
+    for train_idx, val_idx, test_idx in zip(train_idxs, val_idxs, test_idxs):
+        train_df = df.iloc[train_idx]
+        val_df = df.iloc[val_idx]
+        test_df = df.iloc[test_idx]
+        
+        train_dataset = PatchBagDataset(train_df,
+                                max_patches_total=max_patch_per_wsi,
+                                bag_size=bag_size,
+                                transforms=transforms_, quick=quick,
+                                label_encoder=le,
+                                normalize=True,
+                                normalizer_type=args.normalizer,
+                                return_ids=True)
+        val_dataset = PatchBagDataset(val_df,
+                                max_patches_total=bag_size,
+                                bag_size=bag_size,
+                                transforms=transforms_val, quick=quick,
+                                label_encoder=le,
+                                normalize=True,
+                                normalizer_type=args.normalizer,
+                                return_ids=True)
+
+        test_dataset = PatchBagDataset(test_df,
+                                max_patches_total=bag_size,
+                                bag_size=bag_size,
+                                transforms=transforms_val, quick=quick,
+                                label_encoder=le,
+                                normalize=True,
+                                normalizer_type=args.normalizer,
+                                return_ids=True)
+
+        if torch.cuda.is_available():
+            print('There is a GPU!')
+            num_workers = torch.cuda.device_count() * 4
+
+        train_dataloader = DataLoader(train_dataset, 
+                                      num_workers=num_workers, pin_memory=True, 
+                                      shuffle=True, batch_size=batch_size,
+                                      collate_fn=collate_fn)
+        val_dataloader = DataLoader(val_dataset, num_workers=num_workers,
+                                    shuffle=False, batch_size=batch_size,
+                                    collate_fn=collate_fn)
+        test_dataloader = DataLoader(test_dataset,  
+                                     num_workers=num_workers, 
+                                     shuffle=False, batch_size=batch_size,
+                                    collate_fn=collate_fn)
+
+        dataloaders = {
+                'train': train_dataloader,
+                'val': val_dataloader}
+
+        dataset_sizes = {
+                'train': len(train_dataset),
+                'val': len(val_dataset)
+                }
+
+        transforms = {
+                'train': transforms_,
+                'val': transforms_val
+                }
+
+        print('Finished loading dataset and creating dataloader')
+
+        print('Initializing models')
+
+        resnet50_ = resnet50(pretrained=True)
+
+        layers_to_train = [resnet50_.layer4]
+
+        for param in resnet50_.parameters():
+            param.requires_grad = False
+        for layer in layers_to_train:
+            for n, param in layer.named_parameters():
+                param.requires_grad = True
+
+        resnet50_ = resnet50_.to('cuda:0')
+
+        model = AggregationModel(resnet50_, num_outputs=2, resnet_dim=2048)
+        use_attention = False
+        def init_weights(m):
+            if type(m) == nn.Linear:
+                torch.nn.init.xavier_uniform_(m.weight)
+                m.bias.data.fill_(0.01)
+        model.fc.apply(init_weights)
+        if args.checkpoint is not None:
+            print('Restoring from checkpoint')
+            print(args.checkpoint)
+            model.load_state_dict(torch.load(args.checkpoint))
+            print('Loaded model from checkpoint')
+
+        if args.parallel and torch.cuda.device_count() > 2:
+            model = nn.DataParallel(model)
+        if torch.cuda.is_available():
+            model = model.to('cuda:0')
+        
+        # add optimizer
+        lr = args.lr
+
+        optimizer = AdamW(model.parameters(), weight_decay = args.weight_decay, lr=lr)
+        criterion = nn.CrossEntropyLoss()
+
+        # train model
+
+        if args.log:
+            day_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") 
+            path_summary = os.path.join('summary',
+                        str(day_time) + "_{0}".format(args.flag))
+            #os.mkdir(path_summary)
+            summary_writer = SummaryWriter(path_summary)
+
+        else:
+            summary_writer = None
+
+        # train model
+        model, results = train(model, criterion, optimizer, dataloaders, transforms, 
+                    save_dir=args.save_dir,
+                    device='cuda:0', log_interval=args.log_interval,
+                    summary_writer=summary_writer,
+                    num_epochs=args.num_epochs)
+
+        #with open(args.save_dir+'train_val_results.pkl', 'wb') as file:
+        #    pickle.dump(results, file)
+
+        # test on test set
+
+        test_results = evaluate(model, test_dataloader, len(test_dataset),
+                                    transforms_val, criterion=criterion, device='cuda:0')
+
+        test_results_splits[f'split_{i}'] = test_results
+        i+= 1
+
+    with open(os.path.join(args.save_dir,'test_results.pkl'), 'wb') as file:
+        pickle.dump(test_results_splits, file)

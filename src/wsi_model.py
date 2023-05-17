@@ -36,7 +36,7 @@ def train(model, criterion, optimizer, dataloaders, transforms,
           save_dir='checkpoints/models/', device='cpu',
           log_interval=100, summary_writer=None, num_epochs=100, 
           scheduler=None, verbose=True,
-          patience=40):
+          patience=40, return_ids=True):
     """ 
     Train classification/regression model.
         Parameters:
@@ -94,6 +94,8 @@ def train(model, criterion, optimizer, dataloaders, transforms,
             for batch_idx, batch in enumerate(tqdm(dataloaders[phase])):
                 wsi = batch[0]
                 labels = batch[1]
+                if return_ids:
+                    patient_ids = batch[2]
                 size = wsi.size(0)
                 labels = labels.flatten()
                 labels = labels.to(device)
@@ -197,7 +199,7 @@ def train(model, criterion, optimizer, dataloaders, transforms,
     return model, results
 
 def evaluate(model, dataloader, dataset_size, transforms, criterion,
-             device='cpu', verbose=True):
+             device='cpu', verbose=True, return_ids=True):
     """ 
     Evaluate classification model on test set
         Parameters:
@@ -219,10 +221,12 @@ def evaluate(model, dataloader, dataset_size, transforms, criterion,
     probabilities = []
     real = []
     losses = []
+    p_idxs = []
     for batch in tqdm(dataloader):        
         wsi = batch[0]
         labels = batch[1]
-        
+        if return_ids:
+            patient_ids = batch[2]
         labels = labels.flatten()
         labels = labels.to(device)
 
@@ -241,13 +245,14 @@ def evaluate(model, dataloader, dataset_size, transforms, criterion,
         probabilities.append(outputs.detach().to('cpu').numpy())
         real.append(labels.detach().to('cpu').numpy())
         losses.append(loss.detach().item())
+        p_idxs.append(patient_ids)
 
     
     accuracy = corrects / dataset_size
     predictions = np.concatenate([predictions], axis=0, dtype=object)
     probabilities = np.concatenate([probabilities], axis=0, dtype=object)
     real = np.concatenate([real], axis=0, dtype=object)
-    
+    p_idxs = np.concatenate([p_idxs], axis=0, dtype=object)
     print('Accuracy of the model {}'.format(accuracy))
     print('Loss of the model {}'.format(np.mean(losses)))
     
@@ -255,7 +260,8 @@ def evaluate(model, dataloader, dataset_size, transforms, criterion,
         'outputs': probabilities,
         'real': real,
         'accuracy': accuracy.detach().to('cpu').numpy(),
-        'predictions': predictions
+        'predictions': predictions,
+        'patient_ids': p_idxs
     }
 
     return test_results

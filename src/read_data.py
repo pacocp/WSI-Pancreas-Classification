@@ -86,7 +86,7 @@ class PatchBagDataset(Dataset):
 
         img = torch.stack(imgs, dim=0)
         if self.return_ids:
-            return img, label, row['patient_id']
+            return img, label, row['patient_id']+f'_{label}'
         return img, label
 
 class PatchBagMHMCDataset(Dataset):
@@ -158,7 +158,7 @@ class PatchBagMHMCDataset(Dataset):
             img = torch.stack(imgs, dim=0)
         except: 
             img = None
-        return img, label
+        return img, label, wsi_path
     
 if __name__ == '__main__':
     file_name = '../data/tcia_ref.csv'

@@ -90,6 +90,31 @@ def patient_kfold(dataset, n_splits=5, random_state=0, valid_size=0.1):
 
     return train_idx, valid_idx, test_idx
 
+def patient_kfold_variable(dataset, n_splits=5, random_state=0, valid_size=0.1, variable='country'):
+    """Perform cross-validation per variable.
+    """
+    indices = np.arange(len(dataset))
+
+    train_idx = []
+    valid_idx = []
+    test_idx = []
+    classes = np.unique(dataset[variable].values)
+    import pdb; pdb.set_trace()
+    for k, class_ in enumerate(classes):
+        test_idx.append(indices[dataset[variable].values ==
+                                       class_])
+
+        train_idx.append(indices[dataset[variable].values !=
+                                       class_])
+        
+        train, val = train_test_split(
+                train_idx[-1], test_size=valid_size, random_state=0)
+        
+        train_idx[-1] = train
+
+        valid_idx.append(val)
+
+    return train_idx, valid_idx, test_idx
 
 def match_patient_kfold(dataset, splits):
     """Recover previously saved patient splits for cross-validation.

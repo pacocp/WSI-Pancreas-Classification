@@ -29,7 +29,7 @@ The model presented is based on a Resnet-50 pre-trained on Imagenet. The feature
 
 python3 patch_gen_grid.py --wsi_path ../TCGA/ --patch_path ../TCGA/TCGA_256x256/ --mask_path ../TCGA/TCGA_Masks/ --patch_size 256 --max_patches_per_slide 4000
 python3 patch_gen_grid.py --wsi_path ../TCIA/ --patch_path ../TCIA/TCIA_256x256/ --mask_path ../TCIA/TCIA_Masks/ --patch_size 256 --max_patches_per_slide 4000
-python3 patch_gen_grid.py --wsi_path ../GTEX/ --patch_path ../GTEX/TCGA_256x256/ --mask_path ../GTEX/GTEX_Masks/ --patch_size 256 --max_patches_per_slide 4000
+python3 patch_gen_grid.py --wsi_path ../GTEX/ --patch_path ../GTEX/GTEX_256x256/ --mask_path ../GTEX/GTEX_Masks/ --patch_size 256 --max_patches_per_slide 4000
 
 ```
 

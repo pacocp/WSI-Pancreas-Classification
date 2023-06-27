@@ -89,6 +89,7 @@ python3 main.py --path_csv ../data/tcia_ref.csv --save_dir runs/tcia_kfold_count
 If you find this work useful please cite it as follows:
 
 ```
-Carrillo-Perez, F., Ortuno, F.M., Börjesson, A. et al. Performance comparison between multi-center histopathology datasets of a weakly-supervised deep learning model
+Carrillo-Perez, F., Ortuno, F.M., Börjesson, A. et al. Performance comparison between multi-center
+histopathology datasets of a weakly-supervised deep learning model
 for pancreatic ductal adenocarcinoma detection. Cancer Imaging 23, 66 (2023). https://doi.org/10.1186/s40644-023-00586-3
 ```

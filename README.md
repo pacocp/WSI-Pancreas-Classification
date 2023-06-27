@@ -1,5 +1,7 @@
 # Performance comparison between multi-center histopathology datasets of a weakly-supervised deep learning model for pancreatic ductal adenocarcinoma detection
 
+*Francisco Carrillo-Perez, Francisco M. Ortuno, Alejandro Börjesson, Ignacio Rojas, and Luis Javier Herrera*
+
 Studying the performance differences between different deep learning models trained on multiple histopathology databases for pancreatic ductal carcinoma vs control classification.
 
 ## Reference files
@@ -80,4 +82,12 @@ python3 main.py --path_csv ../data/mhmc_ref.csv --png --save_dir runs/tcgagtex_o
 
 ```python
 python3 main.py --path_csv ../data/tcia_ref.csv --save_dir runs/tcia_kfold_country --country --batch_size 4 --lr 1e-3 --bag_size 100 --max_patch_per_wsi 200 --log 0 --flag tcia_kfold_patient_country
+```
+
+## Citation
+
+If you find this work useful please cite it as follows:
+
+```
+Carrillo-Perez, F., Ortuno, F.M., Börjesson, A. et al. Performance comparison between multi-center histopathology datasets of a weakly-supervised deep learning model for pancreatic ductal adenocarcinoma detection. Cancer Imaging 23, 66 (2023). https://doi.org/10.1186/s40644-023-00586-3
 ```
